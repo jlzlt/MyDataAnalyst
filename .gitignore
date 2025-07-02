@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+# Virtual environment
+venv/
+.venv/
+
+# Django stuff:
+*.log
+*.pot
+*.mo
+*.sqlite3
+db.sqlite3
+media/
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# Environment variables
+.env
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# MyDataAnalyst specific
+/static/
+/staticfiles/

@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+    <h1>Welcome to MyDataAnalyst!</h1>
+    <p>Upload your CSV file to get started.</p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Upload CSV</button>
+    </form>
+
+    {% if message %}
+        <div class="alert alert-success mt-3" role="alert">
+            {{ message }}
+        </div>
+    {% endif %}
+
+    {% if error %}
+        <div class="alert alert-danger mt-3" role="alert">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    {% if questions %}
+        <h2 class="mt-4">Suggested Questions:</h2>
+        <form method="post" action="{% url 'analyze_data' %}">
+            {% csrf_token %}
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="select-all-questions">
+                <label class="form-check-label" for="select-all-questions">
+                    Select All
+                </label>
+            </div>
+            {% for question in questions %}
+                <div class="form-check">
+                    <input class="form-check-input question-checkbox" type="checkbox" name="selected_questions" value="{{ question }}" id="question-{{ forloop.counter }}">
+                    <label class="form-check-label" for="question-{{ forloop.counter }}">
+                        {{ question }}
+                    </label>
+                </div>
+            {% endfor %}
+
+            <h2 class="mt-4">Add Your Own Questions:</h2>
+            <div class="mb-3">
+                <label for="custom-questions" class="form-label">Enter questions, one per line:</label>
+                <textarea class="form-control" id="custom-questions" name="custom_questions" rows="5"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-success mt-3">Analyze Selected Questions</button>
+        </form>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const selectAllCheckbox = document.getElementById('select-all-questions');
+                const questionCheckboxes = document.querySelectorAll('.question-checkbox');
+
+                selectAllCheckbox.addEventListener('change', function() {
+                    questionCheckboxes.forEach(checkbox => {
+                        checkbox.checked = selectAllCheckbox.checked;
+                    });
+                });
+            });
+        </script>
+    {% endif %}
+{% endblock %}

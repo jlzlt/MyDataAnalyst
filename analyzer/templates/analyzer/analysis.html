@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block title %}Analysis Results{% endblock %}
+
+{% block content %}
+    <h1>Analysis Results</h1>
+
+    {% if results %}
+        {% for result in results %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    Question: {{ result.question }}
+                </div>
+                <div class="card-body">
+                    <p class="card-text"><strong>Answer:</strong> {{ result.answer }}</p>
+                    {% if result.plot_url %}
+                        <img src="data:image/png;base64,{{ result.plot_url }}" class="img-fluid" alt="Chart">
+                    {% else %}
+                        <p>No chart generated for this question or chart type not supported yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No analysis results to display.</p>
+    {% endif %}
+
+    <a href="{% url 'index' %}" class="btn btn-secondary mt-3">Upload New CSV</a>
+{% endblock %}
