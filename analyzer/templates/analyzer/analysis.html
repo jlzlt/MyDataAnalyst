@@ -3,6 +3,7 @@
 {% block title %}Analysis Results{% endblock %}
 
 {% block content %}
+    <div id="analysis-results">
     <h1>Analysis Results</h1>
 
     {% if results %}
@@ -26,6 +27,45 @@
     {% else %}
         <p>No analysis results to display.</p>
     {% endif %}
+    </div>
 
     <a href="{% url 'index' %}" class="btn btn-secondary mt-3">Upload New CSV</a>
+    <button id="download-pdf" class="btn btn-primary mt-3">Download as PDF</button>
+{% endblock %}
+
+{% block extra_body %}
+<script>
+    document.getElementById('download-pdf').addEventListener('click', function () {
+        const {
+            jsPDF
+        } = window.jspdf;
+        const analysisResults = document.getElementById('analysis-results');
+
+        html2canvas(analysisResults, {
+            scale: 2, // Increase scale for better quality
+            useCORS: true
+        }).then(canvas => {
+            const imgData = canvas.toDataURL('image/png');
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const imgProps = pdf.getImageProperties(imgData);
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+            let heightLeft = pdfHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+            heightLeft -= pdf.internal.pageSize.getHeight();
+
+            while (heightLeft >= 0) {
+                position = heightLeft - pdfHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+                heightLeft -= pdf.internal.pageSize.getHeight();
+            }
+
+            pdf.save("analysis_results.pdf");
+        });
+    });
+</script>
 {% endblock %}
