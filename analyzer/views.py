@@ -3,12 +3,11 @@ from .forms import CSVUploadForm
 import pandas as pd
 from groq import Groq
 from django.conf import settings
-import base64
-from io import BytesIO, StringIO
-import matplotlib.pyplot as plt
-import matplotlib
-matplotlib.use('Agg')
+from io import StringIO
+import plotly.express as px
+import plotly.io as pio
 import re
+import json
 
 
 def get_ai_questions(df_summary):
@@ -17,21 +16,16 @@ def get_ai_questions(df_summary):
         messages=[
             {
                 "role": "user",
-                "content": f"""Given the following CSV data summary:
-
-{df_summary}
-
-Provide a list of the most relevant and insightful questions that can be asked about this dataset. 
-Separate each question with a unique delimiter, such as '|||'. 
-Do not include any introductory or concluding remarks, just the delimited questions.""",
+                "content": f'"""Given the following CSV data summary:\n\n{df_summary}\n\nProvide a list of insightful questions about this dataset. Output ONLY the questions, each separated by \'|||\'. Do not include any other text or formatting."""',
             }
         ],
         model="llama3-8b-8192",  # Using a smaller model for quicker responses
     )
     questions_str = chat_completion.choices[0].message.content
+    # Use regex to split by the delimiter OR newlines for more robust parsing
     questions = [
         q.strip() + ("?" if not q.strip().endswith("?") else "")
-        for q in questions_str.split("|||")
+        for q in re.split(r'\|\|\||\n', questions_str)
         if q.strip()
     ]
     return questions
@@ -43,7 +37,7 @@ def get_ai_answer(question, df_head, df_columns):
         messages=[
             {
                 "role": "user",
-                "content": f"Given the following question: {question}\n\nAnd the CSV data with head: {df_head}\n\nAnd columns: {df_columns}\n\nProvide a concise answer and suggest a suitable chart type (e.g., bar chart, line chart, scatter plot) if applicable. Format your response as: Answer: <answer>\nChart Type: <chart_type>",
+                "content": f'"""For the question: {question}\nGiven the CSV data head: {df_head}\nAnd columns: {df_columns}\n\nProvide a concise answer, suggest a suitable chart type (e.g., bar chart, line chart, scatter plot), and suggest specific columns for plotting (e.g., x_column, y_column, hue_column). Respond ONLY with a JSON object with keys: \'answer\', \'chart_type\', and \'plot_columns\' (a dictionary). Example: {{"answer": "The average beer servings is X.", "chart_type": "bar chart", "plot_columns": {{"x": "country", "y": "beer_servings"}}}}."""',
             }
         ],
         model="llama3-8b-8192",
@@ -95,9 +89,11 @@ def analyze_data(request):
     if request.method == "POST":
         selected_questions = request.POST.getlist("selected_questions")
         custom_questions_str = request.POST.get("custom_questions", "")
-        
+
         if custom_questions_str:
-            custom_questions = [q.strip() for q in custom_questions_str.split('\n') if q.strip()]
+            custom_questions = [
+                q.strip() for q in custom_questions_str.split("\n") if q.strip()
+            ]
             selected_questions.extend(custom_questions)
 
         if not selected_questions:
@@ -107,112 +103,107 @@ def analyze_data(request):
         if not df_json:
             return redirect("index")
 
-        df = pd.read_json(StringIO(df_json), orient='columns')
+        df = pd.read_json(StringIO(df_json), orient="columns")
         results = []
 
         for question in selected_questions:
-            ai_response = get_ai_answer(
+            ai_response_str = get_ai_answer(
                 question, df.head().to_string(), df.columns.tolist()
             )
-            answer_match = re.search(r"Answer: (.*)", ai_response)
-            chart_type_match = re.search(r"Chart Type: (.*)", ai_response)
+            print(f"Raw AI response for answer: {ai_response_str}")  # Debug print
 
-            answer = (
-                answer_match.group(1).strip()
-                if answer_match
-                else "No answer generated."
-            )
-            chart_type = (
-                chart_type_match.group(1).strip() if chart_type_match else "None"
-            )
+            answer = "No answer generated."
+            chart_type = "None"
+            plot_columns = {}
 
-            plot_url = None
+            try:
+                ai_response = json.loads(ai_response_str)
+                answer = ai_response.get("answer", answer)
+                chart_type = ai_response.get("chart_type", chart_type)
+                plot_columns = ai_response.get("plot_columns", plot_columns)
+                print(
+                    f"Parsed AI response: Answer='{answer}', Chart Type='{chart_type}', Plot Columns='{plot_columns}'"
+                )  # Debug print
+            except json.JSONDecodeError:
+                print(
+                    f"JSONDecodeError: Could not parse AI response as JSON. Raw response: {ai_response_str}"
+                )  # Debug print
+                # Fallback if AI doesn't return valid JSON
+                answer_match = re.search(r"Answer: (.*)", ai_response_str)
+                chart_type_match = re.search(r"Chart Type: (.*)", ai_response_str)
+                answer = answer_match.group(1).strip() if answer_match else answer
+                chart_type = (
+                    chart_type_match.group(1).strip()
+                    if chart_type_match
+                    else chart_type
+                )
 
-            def generate_plot(df, chart_type, question, answer):
-                plt.style.use('seaborn-v0_8-darkgrid') # Apply a style
-                fig, ax = plt.subplots(figsize=(10, 6))
-                
-                plot_generated = False
-                
+            plot_div = None
+
+            def generate_plot(df, chart_type, question, answer, plot_columns):
+                fig = None
                 try:
+                    x_col = plot_columns.get("x")
+                    y_col = plot_columns.get("y")
+                    hue_col = plot_columns.get("hue")
+
+                    # Validate columns exist in DataFrame
+                    if x_col and x_col not in df.columns:
+                        x_col = None
+                    if y_col and y_col not in df.columns:
+                        y_col = None
+                    if hue_col and hue_col not in df.columns:
+                        hue_col = None
+
+                    title = f"{y_col} by {x_col}" if x_col and y_col else question
+
                     if chart_type.lower() == "bar chart":
-                        # Try to find a categorical and a numerical column
-                        categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-                        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-
-                        if categorical_cols and numeric_cols:
-                            # Use the first categorical and first numeric for a basic bar chart
-                            # Limit to top N categories and aggregate the rest into 'Other'
-                            N = 20 # Number of top categories to display
-                            
-                            # Group by categorical column and sum/mean the numeric column
-                            # For simplicity, using mean here, but could be sum depending on context
-                            grouped_data = df.groupby(categorical_cols[0])[numeric_cols[0]].mean().sort_values(ascending=False)
-
-                            data_to_plot = grouped_data.head(N)
-                            
-                            # Always use horizontal bar chart for better readability with many categories
-                            data_to_plot.plot(kind='barh', ax=ax)
-                            ax.set_ylabel(categorical_cols[0])
-                            ax.set_xlabel(numeric_cols[0])
-                            ax.set_title(f'{numeric_cols[0]} by {categorical_cols[0]} (Top {len(data_to_plot)} Categories)')
-                            plot_generated = True
-                        elif numeric_cols:
-                            # Fallback to distribution of a single numeric column if no categorical
-                            df[numeric_cols[0]].value_counts().sort_index().plot(kind='bar', ax=ax)
-                            ax.set_title(f'Distribution of {numeric_cols[0]}')
-                            ax.set_xlabel(numeric_cols[0])
-                            ax.set_ylabel('Count')
-                            plot_generated = True
+                        if x_col and y_col:
+                            fig = px.bar(
+                                df, x=x_col, y=y_col, color=hue_col, title=title
+                            )
+                        elif y_col:  # Fallback for single numeric column
+                            fig = px.histogram(
+                                df, x=y_col, title=f"Distribution of {y_col}"
+                            )
 
                     elif chart_type.lower() == "line chart":
-                        # Try to find a time-series like column and a numerical column
-                        # For simplicity, assuming first numeric column against index or another numeric
-                        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-                        if len(numeric_cols) >= 2:
-                            df.plot(x=numeric_cols[0], y=numeric_cols[1], kind='line', ax=ax)
-                            ax.set_title(f'{numeric_cols[1]} over {numeric_cols[0]}')
-                            ax.set_xlabel(numeric_cols[0])
-                            ax.set_ylabel(numeric_cols[1])
-                            plot_generated = True
-                        elif numeric_cols:
-                            df[numeric_cols[0]].plot(kind='line', ax=ax)
-                            ax.set_title(f'Trend of {numeric_cols[0]}')
-                            ax.set_xlabel('Index')
-                            ax.set_ylabel(numeric_cols[0])
-                            plot_generated = True
+                        if x_col and y_col:
+                            fig = px.line(
+                                df,
+                                x=x_col,
+                                y=y_col,
+                                color=hue_col,
+                                title=title,
+                                markers=True,
+                            )
+                        elif y_col:  # Fallback for single numeric column
+                            fig = px.line(
+                                df, y=y_col, title=f"Trend of {y_col}", markers=True
+                            )
 
                     elif chart_type.lower() == "scatter plot":
-                        # Need at least two numeric columns for a scatter plot
-                        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-                        if len(numeric_cols) >= 2:
-                            df.plot(x=numeric_cols[0], y=numeric_cols[1], kind='scatter', ax=ax)
-                            ax.set_title(f'Scatter Plot of {numeric_cols[1]} vs {numeric_cols[0]}')
-                            ax.set_xlabel(numeric_cols[0])
-                            ax.set_ylabel(numeric_cols[1])
-                            plot_generated = True
-                    
-                    # Add more chart types here (e.g., histogram, pie chart)
+                        if x_col and y_col:
+                            fig = px.scatter(
+                                df, x=x_col, y=y_col, color=hue_col, title=title
+                            )
 
-                    if plot_generated:
-                        plt.tight_layout()
-                        buffer = BytesIO()
-                        plt.savefig(buffer, format="png")
-                        plt.close(fig) # Close the figure to free memory
-                        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    if fig:
+                        fig.update_layout(template="plotly_dark")
+                        return pio.to_html(fig, full_html=False)
+
                 except Exception as e:
                     print(f"Error generating plot: {e}")
-                    plt.close(fig) # Ensure figure is closed on error
                 return None
 
-            plot_url = generate_plot(df, chart_type, question, answer)
+            plot_div = generate_plot(df, chart_type, question, answer, plot_columns)
 
             results.append(
                 {
                     "question": question,
                     "answer": answer,
                     "chart_type": chart_type,
-                    "plot_url": plot_url,
+                    "plot_div": plot_div,
                 }
             )
         return render(request, "analyzer/analysis.html", {"results": results})

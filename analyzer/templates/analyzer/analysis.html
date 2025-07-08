@@ -13,8 +13,10 @@
                 </div>
                 <div class="card-body">
                     <p class="card-text"><strong>Answer:</strong> {{ result.answer }}</p>
-                    {% if result.plot_url %}
-                        <img src="data:image/png;base64,{{ result.plot_url }}" class="img-fluid" alt="Chart">
+                    {% if result.plot_div %}
+                        <div class="plotly-chart">
+                            {{ result.plot_div|safe }}
+                        </div>
                     {% else %}
                         <p>No chart generated for this question or chart type not supported yet.</p>
                     {% endif %}
