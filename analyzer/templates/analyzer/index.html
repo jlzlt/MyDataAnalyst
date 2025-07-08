@@ -6,10 +6,13 @@
     <h1>Welcome to MyDataAnalyst!</h1>
     <p>Upload your CSV file to get started.</p>
 
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="upload-form">
         {% csrf_token %}
         {{ form.as_p }}
-        <button type="submit" class="btn btn-primary">Upload CSV</button>
+        <button type="submit" class="btn btn-primary" id="upload-csv-btn">
+            <span id="upload-spinner" class="spinner-border spinner-border-sm me-2" role="status" style="display: none;"></span>
+            Upload CSV
+        </button>
     </form>
 
     {% if message %}
@@ -26,7 +29,7 @@
 
     {% if questions %}
         <h2 class="mt-4">Suggested Questions:</h2>
-        <form method="post" action="{% url 'analyze_data' %}">
+        <form method="post" action="{% url 'analyze_data' %}" id="analyze-form">
             {% csrf_token %}
             <div class="form-check mb-3">
                 <input class="form-check-input" type="checkbox" id="select-all-questions">
@@ -49,20 +52,54 @@
                 <textarea class="form-control" id="custom-questions" name="custom_questions" rows="5"></textarea>
             </div>
 
-            <button type="submit" class="btn btn-success mt-3">Analyze Selected Questions</button>
+            <button type="submit" class="btn btn-success mt-3" id="analyze-btn">
+                <span id="analyze-spinner" class="spinner-border spinner-border-sm me-2" role="status" style="display: none;"></span>
+                Analyze Selected Questions
+            </button>
         </form>
 
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                const selectAllCheckbox = document.getElementById('select-all-questions');
-                const questionCheckboxes = document.querySelectorAll('.question-checkbox');
+        {% endif %}
 
+{% block extra_body %}
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Logic for the "Select All" checkbox
+            const selectAllCheckbox = document.getElementById('select-all-questions');
+            if (selectAllCheckbox) {
+                const questionCheckboxes = document.querySelectorAll('.question-checkbox');
                 selectAllCheckbox.addEventListener('change', function() {
                     questionCheckboxes.forEach(checkbox => {
                         checkbox.checked = selectAllCheckbox.checked;
                     });
                 });
-            });
-        </script>
-    {% endif %}
+            }
+
+            // Logic for the Upload CSV form submission
+            const uploadForm = document.getElementById('upload-form');
+            if (uploadForm) {
+                uploadForm.addEventListener('submit', function() {
+                    const uploadBtn = document.getElementById('upload-csv-btn');
+                    const spinner = document.getElementById('upload-spinner');
+                    if (uploadBtn && spinner) {
+                        uploadBtn.disabled = true;
+                        spinner.style.display = 'inline-block';
+                    }
+                });
+            }
+
+            // Logic for the Analyze Questions form submission
+            const analyzeForm = document.getElementById('analyze-form');
+            if (analyzeForm) {
+                analyzeForm.addEventListener('submit', function() {
+                    const analyzeBtn = document.getElementById('analyze-btn');
+                    const spinner = document.getElementById('analyze-spinner');
+                    if (analyzeBtn && spinner) {
+                        analyzeBtn.disabled = true;
+                        spinner.style.display = 'inline-block';
+                    }
+                });
+            }
+        });
+    </script>
+{% endblock %}
 {% endblock %}

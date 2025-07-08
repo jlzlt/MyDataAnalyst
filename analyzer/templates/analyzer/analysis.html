@@ -30,12 +30,21 @@
     </div>
 
     <a href="{% url 'index' %}" class="btn btn-secondary mt-3">Upload New CSV</a>
-    <button id="download-pdf" class="btn btn-primary mt-3">Download as PDF</button>
+    <button id="download-pdf" class="btn btn-primary mt-3">
+        <span id="loading-spinner" class="spinner-border spinner-border-sm me-2" role="status" style="display: none;"></span>
+        Download as PDF
+    </button>
 {% endblock %}
 
 {% block extra_body %}
 <script>
     document.getElementById('download-pdf').addEventListener('click', function () {
+        const downloadBtn = document.getElementById('download-pdf');
+        const spinner = document.getElementById('loading-spinner');
+        
+        downloadBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+
         const {
             jsPDF
         } = window.jspdf;
@@ -65,6 +74,8 @@
             }
 
             pdf.save("analysis_results.pdf");
+            spinner.style.display = 'none';
+            downloadBtn.disabled = false;
         });
     });
 </script>
